@@ -15,19 +15,22 @@ class TracingModule:
         self.breakpoints.update(debugger)
         return self
 
-    def callback_regex(self, regex: str, loc: Literal["in", "out"]):
+    def callback_regex(self, regex: str):
         def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
-            self.breakpoints.register_callback_regex(regex, loc, callback)
+            self.breakpoints.register_callback_regex(regex, callback)
             return callback
 
         return aux
 
-    def callback_name(self, name: str, loc: Literal["in", "out"]):
+    def callback_name(self, name: str):
         def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
-            self.breakpoints.register_callback_name(name, loc, callback)
+            self.breakpoints.register_callback_name(name, callback)
             return callback
 
         return aux
+
+    def callback_report(self, reporter):
+        self.reporter = reporter
 
     def enable(self, target: SBTarget):
         succ_enabled, unresolved = self.breakpoints.set(target)
@@ -49,7 +52,7 @@ class TracingModule:
 
     def report(self, target: SBTarget):
         if self.is_enabled(target):
-            report()
+            self.reporter()
 
     def is_enabled(self, target: SBTarget):
         for t, _ in self.breakpoints.registered_breakpoints:

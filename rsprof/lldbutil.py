@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from inspect import isfunction
 from typing import Any, Callable, Dict, List, Literal, Tuple
-from lldb import SBDebugger, SBTarget, SBFrame, SBBreakpointLocation, SBBreakpoint
+from lldb import (
+    SBDebugger,
+    SBTarget,
+    SBFrame,
+    SBBreakpointLocation,
+    SBBreakpoint,
+)
 
 from rsprof.logutil import info, warn
 
@@ -23,7 +29,6 @@ class BreakpointManager:
             Tuple[
                 str,
                 int,
-                Literal["in", "out"],
                 Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
             ]
         ] = []
@@ -32,18 +37,16 @@ class BreakpointManager:
     def register_callback_regex(
         self,
         regex: str,
-        loc: Literal["in", "out"],
         callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
     ):
-        self.breakpoint_callbacks.append((regex, 1, loc, callback))
+        self.breakpoint_callbacks.append((regex, 1, callback))
 
     def register_callback_name(
         self,
         name: str,
-        loc: Literal["in", "out"],
         callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
     ):
-        self.breakpoint_callbacks.append((name, 0, loc, callback))
+        self.breakpoint_callbacks.append((name, 0, callback))
 
     def update(self, debugger: SBDebugger):
         self.registered_breakpoints = list(
@@ -59,7 +62,7 @@ class BreakpointManager:
                 return False, None
 
         registered_breakpoints = []
-        for (symb, stype, location, callback) in self.breakpoint_callbacks:
+        for (symb, stype, callback) in self.breakpoint_callbacks:
             bp: SBBreakpoint = (
                 target.BreakpointCreateByName(symb)
                 if stype == 0
@@ -90,3 +93,7 @@ class BreakpointManager:
                 self.registered_breakpoints.pop(index)
                 return True
         return False
+
+
+def evaluate_expression_unsigned(frame: SBFrame, expression: str) -> int:
+    return frame.EvaluateExpression(expression).GetValueAsUnsigned()
