@@ -1,15 +1,18 @@
 from importlib import import_module
-from typing import Any, Callable, List, Literal
+from typing import Any, Callable, Generic, List, TypeVar
 from lldb import SBDebugger, SBTarget, SBFrame, SBBreakpointLocation
 
 from rsprof.lldbutil import BreakpointManager
 from rsprof.logutil import fail, info, panic, warn
 
+T = TypeVar("T")
 
-class TracingModule:
+
+class TracingModule(Generic[T]):
     def __init__(self, module_name: str) -> None:
         self.breakpoints = BreakpointManager()
         self.module_name = module_name
+        self.events: List[T] = []
 
     def on_load(self, debugger: SBDebugger):
         self.breakpoints.update(debugger)
@@ -44,6 +47,9 @@ class TracingModule:
             else:
                 info(f"tracing module '{self.module_name}' is enabled")
 
+    def clear(self):
+        self.events.clear()
+
     def disable(self, target: SBTarget):
         if not self.breakpoints.unset(target):
             warn(f"tracing module '{self.module_name}' is not enabled")
@@ -53,6 +59,11 @@ class TracingModule:
     def report(self, target: SBTarget):
         if self.is_enabled(target):
             self.reporter()
+
+    def generic_report(self):
+        print(f"module '{self.module_name}' recorded {len(self.events)} events")
+        for id, event in enumerate(self.events):
+            print(f"  {id}. {event}")
 
     def is_enabled(self, target: SBTarget):
         for t, _ in self.breakpoints.registered_breakpoints:

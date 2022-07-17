@@ -40,7 +40,7 @@ def rsprof(lldb_debugger: SBDebugger, command: str, result, options):
             print("enabled modules:")
             for module in loaded_modules:
                 if module.is_enabled(target):
-                    print(" ", module.module_name)
+                    print("  ", module.module_name)
 
         lldb_debugger.SetAsync(origin_async)
 

@@ -1,4 +1,4 @@
-from typing import List, cast
+from typing import List
 from rsprof.tracing import TracingModule
 from lldb import (
     SBFrame,
@@ -7,10 +7,15 @@ from lldb import (
 from traceutil import stacktrace_from_sbframe, StackTrace
 from lldbutil import evaluate_expression_unsigned
 
-MODULE = TracingModule("memory")
+
+class MemoryEvent:
+    pass
 
 
-class AllocationTrace:
+MODULE: TracingModule[MemoryEvent] = TracingModule("memory")
+
+
+class AllocEvent(MemoryEvent):
     def __init__(
         self, stacktrace: StackTrace, size: int, align: int, addr: int
     ) -> None:
@@ -19,10 +24,8 @@ class AllocationTrace:
         self.align = align
         self.addr = addr
 
-
-ALLOCATIONS: List[AllocationTrace] = []
-DEALLOCATIONS = []
-
+    def __str__(self) -> str:
+        return f"alloc {self.size} bytes (align {self.align})"
 
 @MODULE.callback_name("__rust_alloc")
 def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
@@ -32,14 +35,14 @@ def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_di
     allocation_size = evaluate_expression_unsigned(frame, "$arg1")
     allocation_align = evaluate_expression_unsigned(frame, "$arg2")
 
-    ALLOCATIONS.append(
-        AllocationTrace(stacktrace, allocation_size, allocation_align, 0)
-    )
+    # TODO: try to fetch the return value, is it possible ?
+
+    MODULE.events.append(AllocEvent(stacktrace, allocation_size, allocation_align, 0))
 
 
 # currently, there's no need to perform deallocation tracing since we are not tracing
 # the entire heap, which, until we get the return value of __rust_alloc
-
+ 
 # @MODULE.callback_name("__rust_dealloc", "in")
 # def rust_dealloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
 #     pass
@@ -47,8 +50,5 @@ def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_di
 
 @MODULE.callback_report
 def report():
-    print(f"recorded {len(ALLOCATIONS)} allocation events in total")
-    for id, allocation in enumerate(ALLOCATIONS):
-        print(
-            f" {id}. {allocation.size}:align {allocation.align} at thread {allocation.stacktrace.threadid}"
-        )
+    # TODO: better report, with GUI or something else ?
+    MODULE.generic_report()
