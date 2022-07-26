@@ -1,54 +1,82 @@
+from io import TextIOWrapper
+import json
 from typing import List
-from rsprof.tracing import TracingModule
+from rsprof.tracing import TracingEvent, TracingModule
 from lldb import (
     SBFrame,
     SBBreakpointLocation,
 )
 from traceutil import stacktrace_from_sbframe, StackTrace
-from lldbutil import evaluate_expression_unsigned
+from lldbutil import get_function_parameter
 
 
-class MemoryEvent:
-    pass
+MODULE: TracingModule["MemoryEvent"] = TracingModule("memory")
 
 
-MODULE: TracingModule[MemoryEvent] = TracingModule("memory")
+class MemoryEvent(TracingEvent):
+    def __init__(self, stacktrace: StackTrace) -> None:
+        super().__init__(stacktrace)
 
 
+@MODULE.event
 class AllocEvent(MemoryEvent):
     def __init__(
-        self, stacktrace: StackTrace, size: int, align: int, addr: int
+        self, stacktrace: StackTrace, size: int, align: int
     ) -> None:
-        self.stacktrace = stacktrace
+        super().__init__(stacktrace)
         self.size = size
         self.align = align
-        self.addr = addr
 
-    def __str__(self) -> str:
-        return f"alloc {self.size} bytes (align {self.align})"
+    def serialize(self):
+        return self.base_serialize({"size": self.size, "align": self.align})
+
+
+@MODULE.event
+class ReallocEvent(MemoryEvent):
+    def __init__(self, stacktrace: StackTrace, old_addr: int, old_size: int, align: int, new_size: int) -> None:
+        super().__init__(stacktrace)
+        self.old_addr = old_addr
+        self.size = old_size
+        self.align = align
+        self.new_addr = new_size
+
+    def serialize(self):
+        return self.base_serialize({"old_addr": self.old_addr, "size": self.size, "align": self.align, "new_addr": self.new_addr})
+
 
 @MODULE.callback_name("__rust_alloc")
 def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
     stacktrace = stacktrace_from_sbframe(frame)
 
-    # get the size of the allocation
-    allocation_size = evaluate_expression_unsigned(frame, "$arg1")
-    allocation_align = evaluate_expression_unsigned(frame, "$arg2")
+    size, align = get_function_parameter(frame, ("u", "u"))
 
-    # TODO: try to fetch the return value, is it possible ?
+    MODULE.events.append(AllocEvent(
+        stacktrace, size, align))
 
-    MODULE.events.append(AllocEvent(stacktrace, allocation_size, allocation_align, 0))
 
+@MODULE.callback_name("__rust_realloc")
+def rust_realloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
+    stacktrace = stacktrace_from_sbframe(frame)
+
+    old_addr, old_size, align, new_size = get_function_parameter(
+        frame, ("u", "u", "u", "u"))
+
+    MODULE.events.append(ReallocEvent(
+        stacktrace, old_addr, old_size, align, new_size))
 
 # currently, there's no need to perform deallocation tracing since we are not tracing
 # the entire heap, which, until we get the return value of __rust_alloc
- 
+
 # @MODULE.callback_name("__rust_dealloc", "in")
 # def rust_dealloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
 #     pass
 
 
 @MODULE.callback_report
-def report():
-    # TODO: better report, with GUI or something else ?
-    MODULE.generic_report()
+def report(prog_module: str):
+    serialize_event = []
+    for event in MODULE.events:
+        event.stacktrace.resolve()
+        event.stacktrace.filter_module(prog_module)
+        serialize_event.append(event.serialize())
+    return serialize_event

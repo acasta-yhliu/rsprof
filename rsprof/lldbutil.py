@@ -1,22 +1,23 @@
-from dataclasses import dataclass
 from inspect import isfunction
-from typing import Any, Callable, Dict, List, Literal, Tuple
+from typing import Any, Callable, List, Literal, Tuple
 from lldb import (
     SBDebugger,
     SBTarget,
     SBFrame,
     SBBreakpointLocation,
     SBBreakpoint,
+    SBValue
 )
 
-from rsprof.logutil import info, warn
+from rsprof.logutil import info
 
 
 def import_lldb_command(lldb_debugger: SBDebugger, item):
     if isfunction(item):
         mod_n, cmd_n = item.__module__, item.__qualname__
         info(f"import command '{mod_n}.{cmd_n}'")
-        lldb_debugger.HandleCommand(f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
+        lldb_debugger.HandleCommand(
+            f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
     else:
         for path in item.__path__:
             info(f"import module '{path}'")
@@ -74,6 +75,8 @@ class BreakpointManager:
                 )
                 bp.SetAutoContinue(True)
                 registered_breakpoints.append(bp.id)
+
+                
             else:
                 target.BreakpointDelete(bp.id)
 
@@ -97,3 +100,12 @@ class BreakpointManager:
 
 def evaluate_expression_unsigned(frame: SBFrame, expression: str) -> int:
     return frame.EvaluateExpression(expression).GetValueAsUnsigned()
+
+
+def get_function_parameter(frame: SBFrame, nargs: Tuple[Literal["s", "u"], ...]):
+    ret_value: List[int] = []
+    for id, s in enumerate(nargs):
+        arg_value: SBValue = frame.EvaluateExpression(f"$arg{id + 1}")
+        ret_value.append(arg_value.GetValueAsUnsigned() if s ==
+                         "u" else arg_value.GetValueAsSigned())
+    return tuple(ret_value)

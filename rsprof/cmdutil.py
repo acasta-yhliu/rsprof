@@ -27,6 +27,9 @@ ARG_PARSER.add_argument(
 ARG_PARSER.add_argument(
     "-m", "--module", type=comma_strlist, default=list(), help="provide tracing modules"
 )
+ARG_PARSER.add_argument("-p", "--program", type=str,
+                        default=None, help="module name of the program")
+ARG_PARSER.add_argument("-o", "--output", type=str, help="output report file")
 
 
 def parse_command(command: str):

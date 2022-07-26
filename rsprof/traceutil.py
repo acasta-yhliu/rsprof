@@ -1,49 +1,62 @@
+from dataclasses import dataclass
 from typing import List
-from lldb import SBFrame, SBLineEntry, SBFileSpec, SBThread
+from lldb import SBFrame, SBLineEntry, SBFileSpec, SBThread, SBFunction
+from rust_demangler import demangle
 
 
+@dataclass
 class StackFrame:
-    def __init__(
-        self,
-        function: str,
-        file: str,
-        line: int,
-    ) -> None:
-        self.function = function
-        self.file = file
-        self.line = line
+    function: str
+    file: str
+    line: int
 
     def resolve(self):
-        # resolve function name, perform demangling
-        pass
+        try:
+            self.function = demangle(self.function)
+        except:
+            pass
 
-    def __str__(self) -> str:
-        return f"{self.function} at {self.file}:{self.line}"
+    def serialize(self):
+        return {
+            "function": self.function,
+            "file": self.file,
+            "line": self.line
+        }
 
 
 def stackframe_from_sbframe(frame: SBFrame):
     line_entry: SBLineEntry = frame.GetLineEntry()
-
-    # fetch the file information
     file_spec: SBFileSpec = line_entry.GetFileSpec()
-    file = file_spec.GetFilename()
+    function_name = frame.GetFunctionName()
+    function_name = "" if function_name is None else function_name
 
-    # fetch the line information
-    line = line_entry.GetLine()
-
-    # fetch the function information
-    function = frame.GetFunctionName()
-
-    return StackFrame(function, file, line)
+    return StackFrame(function_name, file_spec.GetFilename(), line_entry.GetLine())
 
 
+@dataclass
 class StackTrace:
-    def __init__(self, threadid: int, stacktrace: List[StackFrame]) -> None:
-        self.stacktrace = stacktrace
-        self.threadid = threadid
+    thread_id: int
+    frames: List[StackFrame]
 
-    def __str__(self) -> str:
-        return f"{self.threadid} {self.stacktrace}"
+    def resolve(self):
+        for st in self.frames:
+            st.resolve()
+
+    def filter_module(self, module_prefix: str):
+        self.frames = list(
+            filter(lambda x: x.function.startswith(module_prefix), self.frames))
+
+    def __getitem__(self, key: int):
+        return self.frames[key]
+
+    def __len__(self):
+        return len(self.frames)
+
+    def serialize(self):
+        return {
+            "thread_id": self.thread_id,
+            "frames": list(map(lambda x: x.serialize(), self.frames))
+        }
 
 
 def stacktrace_from_sbframe(frame: SBFrame):

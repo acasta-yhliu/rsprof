@@ -1,18 +1,19 @@
 from importlib import import_module
-from typing import Any, Callable, Generic, List, TypeVar
+from typing import Any, Callable, Generic, List, Type, TypeVar
 from lldb import SBDebugger, SBTarget, SBFrame, SBBreakpointLocation
 
 from rsprof.lldbutil import BreakpointManager
 from rsprof.logutil import fail, info, panic, warn
+from rsprof.traceutil import StackTrace
 
-T = TypeVar("T")
+_T = TypeVar("_T")
 
 
-class TracingModule(Generic[T]):
-    def __init__(self, module_name: str) -> None:
+class TracingModule(Generic[_T]):
+    def __init__(self, name: str) -> None:
         self.breakpoints = BreakpointManager()
-        self.module_name = module_name
-        self.events: List[T] = []
+        self.name = name
+        self.events: List[_T] = []
 
     def on_load(self, debugger: SBDebugger):
         self.breakpoints.update(debugger)
@@ -38,30 +39,33 @@ class TracingModule(Generic[T]):
     def enable(self, target: SBTarget):
         succ_enabled, unresolved = self.breakpoints.set(target)
         if not succ_enabled:
-            warn(f"tracing module '{self.module_name}' is already enabled")
+            warn(f"tracing module '{self.name}' is already enabled")
         else:
             if unresolved is not None:
                 fail(
-                    f"tracing module '{self.module_name}' failed to enable due to unresolved symbol '{unresolved}'"
+                    f"tracing module '{self.name}' failed to enable due to unresolved symbol '{unresolved}'"
                 )
             else:
-                info(f"tracing module '{self.module_name}' is enabled")
+                info(f"tracing module '{self.name}' is enabled")
 
     def clear(self):
         self.events.clear()
 
     def disable(self, target: SBTarget):
         if not self.breakpoints.unset(target):
-            warn(f"tracing module '{self.module_name}' is not enabled")
+            warn(f"tracing module '{self.name}' is not enabled")
         else:
-            info(f"tracing module '{self.module_name}' is disabled")
+            info(f"tracing module '{self.name}' is disabled")
 
-    def report(self, target: SBTarget):
+    def report(self, target: SBTarget, prog_module: str):
         if self.is_enabled(target):
-            self.reporter()
+            return self.reporter(prog_module)
+        else:
+            return None
 
     def generic_report(self):
-        print(f"module '{self.module_name}' recorded {len(self.events)} events")
+        print(
+            f"module '{self.name}' recorded {len(self.events)} events")
         for id, event in enumerate(self.events):
             print(f"  {id}. {event}")
 
@@ -70,6 +74,10 @@ class TracingModule(Generic[T]):
             if target == t:
                 return True
         return False
+
+    def event(self, cls):
+        setattr(cls, "__event_type", f"{self.name}-{cls.__name__.lower()}")
+        return cls
 
 
 REGISTED_MODULES = {"memory"}
@@ -84,5 +92,21 @@ def load_tracing_modules(debugger: SBDebugger, modules: List[str]):
             panic(f"tracing module '{module_name}' does not exist")
 
     return map(
-        lambda x: import_module(f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
+        lambda x: import_module(
+            f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
     )
+
+
+class TracingEvent:
+    def __init__(self, stacktrace: StackTrace) -> None:
+        self.stacktrace = stacktrace
+
+    def serialize(self):
+        pass
+
+    def base_serialize(self, other_data):
+        return {
+            "type": getattr(self.__class__, "__event_type"),
+            "stacktrace": self.stacktrace.serialize(),
+            "data": other_data
+        }
