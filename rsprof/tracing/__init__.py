@@ -9,11 +9,11 @@ from rsprof.traceutil import StackTrace
 _T = TypeVar("_T")
 
 
-class TracingModule(Generic[_T]):
+class TracingModule:
     def __init__(self, name: str) -> None:
         self.breakpoints = BreakpointManager()
         self.name = name
-        self.events: List[_T] = []
+        self.events: List["TracingEvent"] = []
 
     def on_load(self, debugger: SBDebugger):
         self.breakpoints.update(debugger)
@@ -79,8 +79,11 @@ class TracingModule(Generic[_T]):
         setattr(cls, "__event_type", f"{self.name}-{cls.__name__.lower()}")
         return cls
 
+    def append_event(self, event):
+        self.events.append(event)
 
-REGISTED_MODULES = {"memory"}
+
+REGISTED_MODULES = {"memory", "clone"}
 
 
 def load_tracing_modules(debugger: SBDebugger, modules: List[str]):

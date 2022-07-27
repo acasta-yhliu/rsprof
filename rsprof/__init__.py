@@ -41,7 +41,7 @@ def rsprof(lldb_debugger: SBDebugger, command: str, result, options):
             if argv.output is None:
                 panic("please provide output file")
             with open(argv.output, "w", encoding="utf-8") as output_file:
-                report_data = []
+                report_data = [{"name": "rsprofmeta", "module": argv.program}]
                 for module in loaded_modules:
                     module_data = module.report(target, argv.program)
                     report_data.append({

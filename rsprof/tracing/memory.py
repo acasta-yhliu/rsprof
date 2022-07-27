@@ -1,16 +1,13 @@
-from io import TextIOWrapper
-import json
-from typing import List
 from rsprof.tracing import TracingEvent, TracingModule
 from lldb import (
     SBFrame,
     SBBreakpointLocation,
 )
-from traceutil import stacktrace_from_sbframe, StackTrace
-from lldbutil import get_function_parameter
+from rsprof.traceutil import stacktrace_from_sbframe, StackTrace
+from rsprof.lldbutil import get_function_parameter
 
 
-MODULE: TracingModule["MemoryEvent"] = TracingModule("memory")
+MODULE = TracingModule("memory")
 
 
 class MemoryEvent(TracingEvent):
@@ -52,6 +49,15 @@ def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_di
 
     MODULE.events.append(AllocEvent(
         stacktrace, size, align))
+
+
+@MODULE.callback_name("__rust_alloc_zeroed")
+def rust_alloc_zeroed(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
+    stacktrace = stacktrace_from_sbframe(frame)
+
+    size, align = get_function_parameter(frame, ("u", "u"))
+
+    MODULE.events.append(AllocEvent(stacktrace, size, align))
 
 
 @MODULE.callback_name("__rust_realloc")

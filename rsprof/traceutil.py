@@ -7,6 +7,7 @@ from rust_demangler import demangle
 @dataclass
 class StackFrame:
     function: str
+    path: str
     file: str
     line: int
 
@@ -19,6 +20,7 @@ class StackFrame:
     def serialize(self):
         return {
             "function": self.function,
+            "path": self.path,
             "file": self.file,
             "line": self.line
         }
@@ -30,7 +32,7 @@ def stackframe_from_sbframe(frame: SBFrame):
     function_name = frame.GetFunctionName()
     function_name = "" if function_name is None else function_name
 
-    return StackFrame(function_name, file_spec.GetFilename(), line_entry.GetLine())
+    return StackFrame(function_name, file_spec.GetDirectory(), file_spec.GetFilename(), line_entry.GetLine())
 
 
 @dataclass
