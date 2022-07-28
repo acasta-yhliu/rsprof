@@ -1,5 +1,5 @@
 [package]
-name = "rsprof-memtrace"
+name = "rsprof-stub"
 version = "0.1.0"
 edition = "2021"
 
