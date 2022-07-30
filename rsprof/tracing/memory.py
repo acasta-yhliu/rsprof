@@ -80,9 +80,4 @@ def rust_realloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_
 
 @MODULE.callback_report
 def report(prog_module: str):
-    serialize_event = []
-    for event in MODULE.events:
-        event.stacktrace.resolve()
-        event.stacktrace.filter_module(prog_module)
-        serialize_event.append(event.serialize())
-    return serialize_event
+    return MODULE.serialize(filter_module=prog_module)

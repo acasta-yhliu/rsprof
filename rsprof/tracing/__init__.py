@@ -1,5 +1,5 @@
 from importlib import import_module
-from typing import Any, Callable, Generic, List, Type, TypeVar
+from typing import Any, Callable, Generic, List, Optional, Type, TypeVar
 from lldb import SBDebugger, SBTarget, SBFrame, SBBreakpointLocation
 
 from rsprof.lldbutil import BreakpointManager
@@ -82,8 +82,18 @@ class TracingModule:
     def append_event(self, event):
         self.events.append(event)
 
+    def serialize(self, *, resolve: bool = True, filter_module: Optional[str] = None):
+        serialized_events = []
+        for event in self.events:
+            if resolve:
+                event.stacktrace.resolve()
+            if filter_module is not None:
+                event.stacktrace.filter_module(filter_module)
+            serialized_events.append(event.serialize())
+        return serialized_events
 
-REGISTED_MODULES = {"memory", "clone"}
+
+REGISTED_MODULES = {"memory", "clone", "memtrace"}
 
 
 def load_tracing_modules(debugger: SBDebugger, modules: List[str]):

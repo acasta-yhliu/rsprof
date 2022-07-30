@@ -1,0 +1,90 @@
+[
+    {
+        "name": "rsprofmeta",
+        "module": "example"
+    },
+    {
+        "name": "memtrace",
+        "data": [
+            {
+                "type": "memtrace-allocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": []
+                },
+                "data": {
+                    "size": 5,
+                    "align": 1,
+                    "addr": 93824992561472
+                }
+            },
+            {
+                "type": "memtrace-allocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": []
+                },
+                "data": {
+                    "size": 48,
+                    "align": 8,
+                    "addr": 93824992561504
+                }
+            },
+            {
+                "type": "memtrace-allocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": [
+                        {
+                            "function": "example::main::h735c6a98787cc4f3",
+                            "path": "/home/acasta/rsprof/example/src",
+                            "file": "main.rs",
+                            "line": 9
+                        }
+                    ]
+                },
+                "data": {
+                    "size": 1024,
+                    "align": 1,
+                    "addr": 93824992560384
+                }
+            },
+            {
+                "type": "memtrace-deallocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": []
+                },
+                "data": {
+                    "size": 1024,
+                    "align": 1,
+                    "addr": 93824992560384
+                }
+            },
+            {
+                "type": "memtrace-deallocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": []
+                },
+                "data": {
+                    "size": 5,
+                    "align": 1,
+                    "addr": 93824992561472
+                }
+            },
+            {
+                "type": "memtrace-deallocationevent",
+                "stacktrace": {
+                    "thread_id": 0,
+                    "frames": []
+                },
+                "data": {
+                    "size": 48,
+                    "align": 8,
+                    "addr": 93824992561504
+                }
+            }
+        ]
+    }
+]
