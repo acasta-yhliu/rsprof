@@ -6,33 +6,40 @@ from rust_demangler import demangle
 
 @dataclass
 class StackFrame:
-    function: str
+    system_name: str
     path: str
     file: str
     line: int
 
     def resolve(self):
         try:
-            self.function = demangle(self.function)
+            self.name = demangle(self.system_name)
         except:
-            pass
+            self.name = self.system_name
 
     def serialize(self):
         return {
-            "function": self.function,
+            "system_name": self.system_name,
+            "name": self.name,
             "path": self.path,
             "file": self.file,
-            "line": self.line
+            "line": self.line,
         }
 
 
 def stackframe_from_sbframe(frame: SBFrame):
     line_entry: SBLineEntry = frame.GetLineEntry()
     file_spec: SBFileSpec = line_entry.GetFileSpec()
+
     function_name = frame.GetFunctionName()
     function_name = "" if function_name is None else function_name
 
-    return StackFrame(function_name, file_spec.GetDirectory(), file_spec.GetFilename(), line_entry.GetLine())
+    return StackFrame(
+        function_name,
+        file_spec.GetDirectory(),
+        file_spec.GetFilename(),
+        line_entry.GetLine(),
+    )
 
 
 @dataclass
@@ -46,7 +53,8 @@ class StackTrace:
 
     def filter_module(self, module_prefix: str):
         self.frames = list(
-            filter(lambda x: x.function.startswith(module_prefix), self.frames))
+            filter(lambda x: x.system_name.startswith(module_prefix), self.frames)
+        )
 
     def __getitem__(self, key: int):
         return self.frames[key]
@@ -57,7 +65,7 @@ class StackTrace:
     def serialize(self):
         return {
             "thread_id": self.thread_id,
-            "frames": list(map(lambda x: x.serialize(), self.frames))
+            "frames": list(map(lambda x: x.serialize(), self.frames)),
         }
 
 
