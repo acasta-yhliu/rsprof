@@ -1,38 +1,33 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+import json
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
 from rsprof.traceutil import StackFrame, StackTrace
+from google.protobuf import json_format
+from rsprof.proto.profile_pb2 import Profile
 
 
 class ToJson:
-    def to_json(self, *args):
+    def to_json(self):
         pass
 
 
 T = TypeVar("T", bound=ToJson)
 
 
-class UniqueTable(Generic[T]):
+class Table(Generic[T]):
     def __init__(self) -> None:
-        self.alloca_table: Dict[T, int] = {}
         self.elemen_table: List[T] = []
 
     def update(self, element: T) -> int:
-        if element in self.alloca_table:
-            return self.alloca_table[element]
-        else:
-            element_id = len(self.elemen_table) + 1
-            self.alloca_table[element] = element_id
-            self.elemen_table.append(element)
-            return element_id
+        self.elemen_table.append(element)
+        return len(self.elemen_table)
 
-    @property
-    def elements(self):
-        return self.elemen_table
-
-    def to_json(self, *args):
+    def to_json(self):
         l = []
-        for id, element in enumerate(self.elements):
-            l.append(element.to_json(id + 1, *args))
+        for id, element in enumerate(self.elemen_table):
+            d = {"id": id + 1}
+            d.update(element.to_json())
+            l.append(d)
         return l
 
 
@@ -40,8 +35,11 @@ class StringTable:
     def __init__(self) -> None:
         self.alloca_table: Dict[str, int] = {}
         self.elemen_table: List[str] = []
+        self.update("")
 
     def update(self, element: str) -> int:
+        if element is None:
+            return 0
         if element in self.alloca_table:
             return self.alloca_table[element]
         else:
@@ -57,49 +55,44 @@ class StringTable:
 
 @dataclass
 class SourceFile(ToJson):
-    filename: str
-    location_path: str
+    filename: int
+    location_path: int
     type: int
 
-    def to_json(self, id: int, string_table: StringTable):
+    def to_json(self):
         return {
-            "id": id,
-            "filename": string_table.update(self.filename),
-            "location_path": string_table.update(self.location_path),
+            "filename": self.filename,
+            "location_path": self.location_path,
             "type": self.type,
         }
 
 
 @dataclass
 class Function(ToJson):
-    name: str
-    system_name: str
-    source_file: SourceFile
+    name: int
+    system_name: int
+    source_file_id: int
     start_line: int
 
-    def to_json(
-        self, id: int, string_table: StringTable, source_table: UniqueTable[SourceFile]
-    ):
+    def to_json(self):
         return {
-            "id": id,
-            "name": string_table.update(self.name),
-            "system_name": string_table.update(self.system_name),
-            "source_file_id": source_table.update(self.source_file),
+            "name": self.name,
+            "system_name": self.system_name,
+            "source_file_id": self.source_file_id,
             "start_line": self.start_line,
         }
 
 
 @dataclass
 class Location(ToJson):
-    function_id: Function
+    function_id: int
     line: int
 
-    def to_json(self, id: int, function_table: UniqueTable[Function]):
+    def to_json(self):
         return {
-            "id": id,
             "line": [
                 {
-                    "function_id": function_table.update(self.function_id),
+                    "function_id": self.function_id,
                     "line": self.line,
                 }
             ],
@@ -107,158 +100,118 @@ class Location(ToJson):
 
 
 @dataclass
-class Event:
-    stacktrace: StackTrace
-    value_type: int
-    values: List[Union[int, str]]
-
-
-@dataclass
 class Context(ToJson):
-    location: Location
-    parent: Optional["Context"]
-    children: List["Context"]
-
-    def to_json(
-        self,
-        id: int,
-        location_table: UniqueTable[Location],
-        context_table: UniqueTable["Context"],
-    ):
-        return {
-            "id": id,
-            "location_id": location_table.update(self.location),
-            "parent_id": 0
-            if self.parent is None
-            else context_table.update(self.parent),
-            "children_id": list(map(lambda x: context_table.update(x), self.children)),
-        }
-
-
-def stackframe_to_context(frame: StackFrame, children: List["Context"]):
-    source_file = SourceFile(frame.file, frame.path, 0)
-    function = Function(frame.name, frame.system_name, source_file, frame.line)
-    location = Location(function, frame.line)
-    this_context = Context(location, None, children)
-    for child in children:
-        child.parent = this_context
-    return this_context
-
-
-def update_context_table(context_table: UniqueTable[Context], context: Context):
-    c = context
-    while c is not None:
-        context_table.update(c)
-        c = c.parent
-
-
-def event_to_sample(event: Event, context_table: UniqueTable[Context]):
-    current_stackframe = event.stacktrace.frames[0]
-    current_context = stackframe_to_context(current_stackframe, [])
-
-    for i in range(1, len(event.stacktrace.frames)):
-        stackframe_to_context(event.stacktrace.frames[i], [current_context])
-
-    update_context_table(context_table, current_context)
-
-    sample = Sample(current_context, event.value_type)
-    sample.metric = event.values
-
-    return sample
-
-
-class MetricDesc:
-    INT_VALUE = 0
-    UINT_VALUE = 1
-    STR_VALUE = 2
-
-    def __init__(self, value_type: int, unit: str, desc: str) -> None:
-        self.value_type = value_type
-        self.unit = unit
-        self.desc = desc
-
-    def to_json(self, string_table: StringTable):
-        return {
-            "value_type": self.value_type,
-            "unit": string_table.update(self.unit),
-            "desc": string_table.update(self.desc),
-        }
-
-
-class Sample:
-    def __init__(self, context: Context, value_type: int) -> None:
-        self.context = context
-        self.value_type = value_type
-        self.metric: List[Union[int, str]] = []
-
-    def add_metric(self, metric: Union[int, str]):
-        self.metric.append(metric)
-
-    def to_json(self, string_table: StringTable, context_table: UniqueTable[Context]):
-        if self.value_type == 0:
-
-            to_json_metric = lambda value: {
-                "int_value": value,
-                "uint_value": 0,
-                "str_value": 0,
-            }
-
-        elif self.value_type == 2:
-
-            to_json_metric = lambda value: {
-                "int_value": 0,
-                "uint_value": value,
-                "str_value": 0,
-            }
-        else:
-            to_json_metric = lambda value: {
-                "int_value": 0,
-                "uint_value": 0,
-                "str_value": string_table.update(value),
-            }
-
-        return {
-            "context_id": context_table.update(self.context),
-            "metric": list(map(to_json_metric, self.metric)),
-        }
-
-
-class ProfileBuilder:
-    def __init__(self, metric_descs: List[MetricDesc]) -> None:
-        # description of different metrices
-        self.metric_type = metric_descs
-
-        # internal string table for serialization
-        self.string_table = StringTable()
-        self.string_table.update("")
-
-        self.samples: List[Sample] = []
-
-        self.context_table = UniqueTable[Context]()
-
-        self.location_table = UniqueTable[Location]()
-        self.function_table = UniqueTable[Function]()
-        self.source_table = UniqueTable[SourceFile]()
-
-    def add_sample(self, sample: Sample):
-        self.samples.append(sample)
+    location_id: int
+    parent_id: int
+    children_id: int
 
     def to_json(self):
         return {
-            "metric_type": list(
-                map(lambda x: x.to_json(self.string_table), self.metric_type)
-            ),
-            "sample": list(
-                map(
-                    lambda x: x.to_json(self.string_table, self.context_table),
-                    self.samples,
-                )
-            ),
-            "context": self.context_table.to_json(),
-            "location": self.location_table.to_json(self.function_table),
-            "function": self.function_table.to_json(
-                self.string_table, self.source_table
-            ),
-            "source_file": self.source_table.to_json(self.string_table),
-            "string_table": self.string_table.strings,
+            "location_id": self.location_id,
+            "parent_id": self.parent_id,
+            "children_id": [self.children_id],
         }
+
+
+@dataclass
+class Event:
+    stacktrace: StackTrace
+    values: List[int]
+
+
+class ProfileBuilder:
+    def __init__(self, *metric_type: Tuple[str, str]) -> None:
+        # internal string table for serialization
+        self.strings = StringTable()
+
+        # description of different metrices
+        self.metric_type = list(
+            map(
+                lambda x: {
+                    "value_type": 0,
+                    "unit": self.strings.update(x[0]),
+                    "des": self.strings.update(x[1]),
+                },
+                metric_type,
+            )
+        )
+
+        self.samples = []
+
+        self.contexts = Table[Context]()
+        self.locations = Table[Location]()
+        self.functions = Table[Function]()
+        self.source_files = Table[SourceFile]()
+
+    def make_context(self, location_id: int):
+        context = Context(location_id, 0, 0)
+        return context, self.contexts.update(context)
+
+    def make_location(self, stackframe: StackFrame):
+        source_file_id = self.source_files.update(
+            SourceFile(
+                self.strings.update(stackframe.file),
+                self.strings.update(stackframe.path),
+                0,
+            )
+        )
+
+        function_id = self.functions.update(
+            Function(
+                self.strings.update(stackframe.name),
+                self.strings.update(stackframe.system_name),
+                source_file_id,
+                stackframe.line,
+            )
+        )
+        return self.locations.update(Location(function_id, stackframe.line))
+
+    def add_context_from_stacktrace(self, stacktrace: StackTrace):
+        parent_context_id = 0
+        parent_context = None
+        for frame in reversed(stacktrace.frames):
+            location_id = self.make_location(frame)
+            context, context_id = self.make_context(location_id)
+
+            # make parent
+            context.parent_id = parent_context_id
+
+            # make child
+            if parent_context is not None:
+                parent_context.children_id = context_id
+
+            # swap
+            parent_context_id = context_id
+            parent_context = context
+
+        return parent_context_id
+
+    def add_event(self, event: Event):
+        metric = list(
+            map(
+                lambda x: {"int_value": x, "uint_value": 0, "str_value": 0},
+                event.values,
+            )
+        )
+        context_id = self.add_context_from_stacktrace(event.stacktrace)
+        self.samples.append({"context_id": context_id, "metric": metric})
+
+    def to_json(self):
+        return {
+            "metric_type": self.metric_type,
+            "sample": self.samples,
+            # context of samples
+            "context": self.contexts.to_json(),
+            # location of samples
+            "location": self.locations.to_json(),
+            "function": self.functions.to_json(),
+            "source_file": self.source_files.to_json(),
+            "string_table": self.strings.strings,
+        }
+
+    def write_file(self, filename: str):
+        profile = Profile()
+        print(self.strings.strings)
+        s = json.dumps(self.to_json())
+        with open(filename, "wb") as f:
+            f.write(json_format.Parse(s, profile).SerializeToString())

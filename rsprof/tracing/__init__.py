@@ -1,5 +1,5 @@
 from importlib import import_module
-from typing import Any, Callable, Generic, List, Optional, Type, TypeVar
+from typing import Any, Callable, List, Optional, TypeVar
 from lldb import SBDebugger, SBTarget, SBFrame, SBBreakpointLocation
 
 from rsprof.lldbutil import BreakpointManager
