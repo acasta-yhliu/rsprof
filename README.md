@@ -1,19 +1,63 @@
 # Rsprof
 
-The not so profiler for rust, only within your lldb
+The event-based and debugger-based program tracer for Rust.
 
 ---
 
 ## Introduction
 
-**Rsprof** is a tool created for light weight profiling for Rust programming language. It is not a full profiler like `perf`, where you could see things like stacktrace, flamegraph or something like that, but a tool for function tracing and special profiling aspects like memory allocation, uncessary clone and other things.
+**Rsprof** is a tool to create tracer for Rust programming language. It utilize `lldb` as its bases and provides basic utilities to perform event based tracing and result visualization powered by Drcctprof viewer.
 
-Since it is only built against lldb, it's easy for someone to install and use it. Only you need is import the `rsprof` module inside lldb and start with the `rsprof` command.
+Currently, a memory tracer is provided as an example.
 
-## Build
+## Build and Installation
 
-```bash
-pip3 install rsprof
+### Rsprof
+
+Install Python packages:
+
+```
+protobuf==3.6.1
+rust-demangler==1.0
 ```
 
-Everything should be done by pip3, including adding import script in your `.lldbinit` file.
+After you clone this repo, you need your lldb to import related comands. This could be done by:
+
+```
+command script import {path to rsprof}
+```
+
+For example, if you place your repo at `~`, then it would be:
+
+```
+command script import ~/rsprof/rsprof
+```
+
+This line could be added to `~/.lldbinit` so that it would be imported everytime automatically.
+
+### Rsprof-Stub
+
+To use some functionality with the tracer, you need to build your rust program with some additional library and they are provided by `rsprof-stub` crate.
+
+To use `memtrace` function, you would use a memory allocator wrapper. This is done by adding:
+
+```rust
+#[global_allocator]
+static RSPROF_ALLOCATOR: RsprofAllocator<System> = RsprofAllocator {
+    allocator: System {}
+}
+```
+
+in your `main.rs`
+
+Note that allocator `System` could be changed to your allocator. 
+
+## Design 
+
+By utilizing the custom script function provided by `lldb`, rsprof could set breakpoints and breakpoint callbacks automatically by tracing modules. Each tracing module would define its own functionality and breakpoints with a set of callbacks.
+
+At each breakpoint, the callback function of the tracing module would be called, thus, an _event_ of the tracing module is invoked. The module would perform stacktrace, explore function arguments and other things to record a full tracing event.
+
+Events would then be serialized into `drcctprof` format for visualization. Each module could define its own serialization scheme, or report other output format like graphs or charts.
+
+For more information, see documentation.
