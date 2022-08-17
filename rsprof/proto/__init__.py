@@ -211,7 +211,6 @@ class ProfileBuilder:
 
     def write_file(self, filename: str):
         profile = Profile()
-        print(self.strings.strings)
         s = json.dumps(self.to_json())
         with open(filename, "wb") as f:
             f.write(json_format.Parse(s, profile).SerializeToString())

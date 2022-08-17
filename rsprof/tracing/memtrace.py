@@ -1,3 +1,4 @@
+from typing import Optional
 from rsprof.lldbutil import get_function_parameter
 from ..proto import (
     Event,
@@ -66,15 +67,15 @@ def rsprof_memtrace_event(
 
 
 @MODULE.callback_report
-def report(prog_module: str):
+def report(output_postfix: Optional[str]):
     profile_builder = ProfileBuilder(
         ("bytes", "allocation size"), ("bytes", "allocation align")
     )
     for event in MODULE.events:
+        event.stacktrace.resolve()
         if isinstance(event, AllocationEvent):
-            event.stacktrace.resolve()
+            allocation_size = event.size
             profile_builder.add_event(
-                Event(event.stacktrace, [event.size, event.align])
+                Event(event.stacktrace, [allocation_size, event.align])
             )
-    profile_builder.write_file("out.prof")
-    return MODULE.serialize(filter_module=prog_module)
+    profile_builder.write_file(MODULE.mix_output_name(output_postfix))

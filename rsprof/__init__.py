@@ -35,12 +35,8 @@ def rsprof(lldb_debugger: SBDebugger, command: str, result, options):
             for module in loaded_modules:
                 module.disable(target)
         elif argv.action == "report":
-            if argv.output is None:
-                output_postfix = ""
-            else:
-                output_postfix = argv.output
             for module in loaded_modules:
-                module.report(target, output_postfix)
+                module.report(target, argv.output)
         elif argv.action == "list":
             print("enabled modules:")
             for module in loaded_modules:

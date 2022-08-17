@@ -57,15 +57,12 @@ class TracingModule:
         else:
             info(f"tracing module '{self.name}' is disabled")
 
-    def report(self, target: SBTarget, prog_module: str):
+    def report(self, target: SBTarget, output_postfix: Optional[str]):
         if self.is_enabled(target):
-            return self.reporter(prog_module)
-        else:
-            return None
+            self.reporter(output_postfix)
 
     def generic_report(self):
-        print(
-            f"module '{self.name}' recorded {len(self.events)} events")
+        print(f"module '{self.name}' recorded {len(self.events)} events")
         for id, event in enumerate(self.events):
             print(f"  {id}. {event}")
 
@@ -82,15 +79,11 @@ class TracingModule:
     def append_event(self, event):
         self.events.append(event)
 
-    def serialize(self, *, resolve: bool = True, filter_module: Optional[str] = None):
-        serialized_events = []
-        for event in self.events:
-            if resolve:
-                event.stacktrace.resolve()
-            if filter_module is not None:
-                event.stacktrace.filter_module(filter_module)
-            serialized_events.append(event.serialize())
-        return serialized_events
+    def mix_output_name(self, output_postfix: Optional[str]):
+        if output_postfix is None:
+            return f"{self.name}.prof"
+        else:
+            return f"{output_postfix}.{self.name}.prof"
 
 
 REGISTED_MODULES = {"memory", "clone", "memtrace"}
@@ -105,21 +98,10 @@ def load_tracing_modules(debugger: SBDebugger, modules: List[str]):
             panic(f"tracing module '{module_name}' does not exist")
 
     return map(
-        lambda x: import_module(
-            f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
+        lambda x: import_module(f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
     )
 
 
 class TracingEvent:
     def __init__(self, stacktrace: StackTrace) -> None:
         self.stacktrace = stacktrace
-
-    def serialize(self):
-        pass
-
-    def base_serialize(self, other_data):
-        return {
-            "type": getattr(self.__class__, "__event_type"),
-            "stacktrace": self.stacktrace.serialize(),
-            "data": other_data
-        }
