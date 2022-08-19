@@ -1,3 +1,5 @@
+from typing import Optional
+from rsprof.proto import Event, ProfileBuilder
 from rsprof.traceutil import StackTrace, stacktrace_from_sbframe
 from rsprof.tracing import TracingEvent, TracingModule
 
@@ -13,17 +15,17 @@ class CloneEvent(TracingEvent):
 
 
 @MODULE.callback_regex("5clone17h")
-def rust_clone(frame: SBFrame, loc:  SBBreakpointLocation, _, __):
+def rust_clone(frame: SBFrame, loc: SBBreakpointLocation, _, __):
     stacktrace = stacktrace_from_sbframe(frame)
 
     MODULE.append_event(CloneEvent(stacktrace))
 
 
 @MODULE.callback_report
-def report(prog_module: str):
-    serialize_event = []
+def report(output_postfix: Optional[str]):
+    profile_builder = ProfileBuilder(("clone", "count"))
     for event in MODULE.events:
+        print(event)
         event.stacktrace.resolve()
-        event.stacktrace.filter_module(prog_module)
-        serialize_event.append(event.serialize())
-    return serialize_event
+        profile_builder.add_event(Event(event.stacktrace, [1]))
+    profile_builder.write_file(MODULE.mix_output_name(output_postfix))

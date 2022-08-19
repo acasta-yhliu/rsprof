@@ -109,3 +109,4 @@ def report(output_postfix: Optional[str]):
                 Event(event.stacktrace, [allocation_size, event.align])
             )
     profile_builder.write_file(MODULE.mix_output_name(output_postfix))
+ 
