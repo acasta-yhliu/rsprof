@@ -71,8 +71,8 @@ class StackTrace:
 
 def stacktrace_from_sbframe(frame: SBFrame):
     stacktrace = []
+    thread: SBThread = frame.GetThread()
     while frame.IsValid():
         stacktrace.append(stackframe_from_sbframe(frame))
         frame = frame.get_parent_frame()
-    thread: SBThread = frame.GetThread()
-    return StackTrace(thread.id, stacktrace)
+    return StackTrace(thread.GetThreadID(), stacktrace)

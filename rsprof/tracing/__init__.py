@@ -33,6 +33,13 @@ class TracingModule:
 
         return aux
 
+    def callback_filelineno(self, file: str, line: int):
+        def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
+            self.breakpoints.register_callback_filelineno(file, line, callback)
+            return callback
+
+        return aux
+
     def callback_report(self, reporter):
         self.reporter = reporter
 
@@ -77,7 +84,7 @@ class TracingModule:
             return f"{output_postfix}.{self.name}.prof"
 
 
-REGISTED_MODULES = {"memory", "clone", "memtrace"}
+REGISTED_MODULES = {"memory", "mutex", "memtrace"}
 
 
 def load_tracing_modules(debugger: SBDebugger, modules: List[str]):

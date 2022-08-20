@@ -6,7 +6,7 @@ from lldb import (
     SBFrame,
     SBBreakpointLocation,
     SBBreakpoint,
-    SBValue
+    SBValue,
 )
 
 from rsprof.logutil import info
@@ -16,8 +16,7 @@ def import_lldb_command(lldb_debugger: SBDebugger, item):
     if isfunction(item):
         mod_n, cmd_n = item.__module__, item.__qualname__
         info(f"import command '{mod_n}.{cmd_n}'")
-        lldb_debugger.HandleCommand(
-            f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
+        lldb_debugger.HandleCommand(f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
     else:
         for path in item.__path__:
             info(f"import module '{path}'")
@@ -49,6 +48,14 @@ class BreakpointManager:
     ):
         self.breakpoint_callbacks.append((name, 0, callback))
 
+    def register_callback_filelineno(
+        self,
+        file: str,
+        line: int,
+        callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
+    ):
+        self.breakpoint_callbacks.append(((file, line), 2, callback))
+
     def update(self, debugger: SBDebugger):
         self.registered_breakpoints = list(
             filter(
@@ -64,11 +71,15 @@ class BreakpointManager:
 
         registered_breakpoints = []
         for (symb, stype, callback) in self.breakpoint_callbacks:
-            bp: SBBreakpoint = (
-                target.BreakpointCreateByName(symb)
-                if stype == 0
-                else target.BreakpointCreateByRegex(symb)
-            )
+            # create breakpoint with different dispatch method
+            bp: SBBreakpoint
+            if stype == 0:
+                bp = target.BreakpointCreateByName(symb)
+            elif stype == 1:
+                bp = target.BreakpointCreateByRegex(symb)
+            elif stype == 2:
+                bp = target.BreakpointCreateByLocation(symb[0], symb[1])
+
             if len(bp.locations) != 0:
                 bp.SetScriptCallbackFunction(
                     f"{callback.__module__}.{callback.__qualname__}"
@@ -76,7 +87,6 @@ class BreakpointManager:
                 bp.SetAutoContinue(True)
                 registered_breakpoints.append(bp.id)
 
-                
             else:
                 target.BreakpointDelete(bp.id)
 
@@ -106,6 +116,7 @@ def get_function_parameter(frame: SBFrame, nargs: Tuple[Literal["s", "u"], ...])
     ret_value: List[int] = []
     for id, s in enumerate(nargs):
         arg_value: SBValue = frame.EvaluateExpression(f"$arg{id + 1}")
-        ret_value.append(arg_value.GetValueAsUnsigned() if s ==
-                         "u" else arg_value.GetValueAsSigned())
+        ret_value.append(
+            arg_value.GetValueAsUnsigned() if s == "u" else arg_value.GetValueAsSigned()
+        )
     return tuple(ret_value)
