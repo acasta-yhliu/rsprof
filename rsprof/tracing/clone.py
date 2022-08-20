@@ -8,7 +8,6 @@ from lldb import SBFrame, SBBreakpointLocation
 MODULE = TracingModule("clone")
 
 
-@MODULE.event
 class CloneEvent(TracingEvent):
     def __init__(self, stacktrace: StackTrace) -> None:
         super().__init__(stacktrace)

@@ -20,7 +20,6 @@ class MemoryEvent(TracingEvent):
         super().__init__(stacktrace)
 
 
-@MODULE.event
 class AllocEvent(MemoryEvent):
     def __init__(self, stacktrace: StackTrace, size: int, align: int) -> None:
         super().__init__(stacktrace)
@@ -28,7 +27,6 @@ class AllocEvent(MemoryEvent):
         self.align = align
 
 
-@MODULE.event
 class ReallocEvent(MemoryEvent):
     def __init__(
         self,
@@ -45,7 +43,6 @@ class ReallocEvent(MemoryEvent):
         self.align = align
 
 
-@MODULE.event
 class DeallocEvent(MemoryEvent):
     def __init__(
         self, stacktrace: StackTrace, addr: int, size: int, align: int

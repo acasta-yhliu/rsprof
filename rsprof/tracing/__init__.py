@@ -61,20 +61,11 @@ class TracingModule:
         if self.is_enabled(target):
             self.reporter(output_postfix)
 
-    def generic_report(self):
-        print(f"module '{self.name}' recorded {len(self.events)} events")
-        for id, event in enumerate(self.events):
-            print(f"  {id}. {event}")
-
     def is_enabled(self, target: SBTarget):
         for t, _ in self.breakpoints.registered_breakpoints:
             if target == t:
                 return True
         return False
-
-    def event(self, cls):
-        setattr(cls, "__event_type", f"{self.name}-{cls.__name__.lower()}")
-        return cls
 
     def append_event(self, event):
         self.events.append(event)

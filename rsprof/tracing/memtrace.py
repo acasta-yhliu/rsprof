@@ -18,7 +18,6 @@ class MemtraceEvent(TracingEvent):
         super().__init__(stacktrace)
 
 
-@MODULE.event
 class AllocationEvent(MemtraceEvent):
     def __init__(
         self, stacktrace: StackTrace, size: int, align: int, addr: int
@@ -28,13 +27,7 @@ class AllocationEvent(MemtraceEvent):
         self.align = align
         self.addr = addr
 
-    def serialize(self):
-        return self.base_serialize(
-            {"size": self.size, "align": self.align, "addr": self.addr}
-        )
 
-
-@MODULE.event
 class DeallocationEvent(MemtraceEvent):
     def __init__(
         self, stacktrace: StackTrace, size: int, align: int, addr: int
@@ -43,11 +36,6 @@ class DeallocationEvent(MemtraceEvent):
         self.size = size
         self.align = align
         self.addr = addr
-
-    def serialize(self):
-        return self.base_serialize(
-            {"size": self.size, "align": self.align, "addr": self.addr}
-        )
 
 
 @MODULE.callback_name("__rsprof_memtrace_event")
