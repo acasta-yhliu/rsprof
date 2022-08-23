@@ -5,8 +5,8 @@ from ..proto import (
     Event,
     ProfileBuilder,
 )
-from rsprof.traceutil import StackTrace, stacktrace_from_sbframe
-from rsprof.tracing import TracingEvent, TracingModule
+from rsprof.traceutil import stacktrace_from_sbframe
+from rsprof.tracing import TracingModule
 
 from lldb import SBFrame, SBBreakpointLocation, SBError, SBProcess
 
@@ -14,12 +14,11 @@ from lldb import SBFrame, SBBreakpointLocation, SBError, SBProcess
 MODULE = TracingModule("mutex")
 
 
-@MODULE.callback_filelineno("sync/mutex.rs", 501)
+@MODULE.breakpoint_srcloc("sync/mutex.rs", 501)
 def mutexguard_create(
     frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict
 ):
     stacktrace = stacktrace_from_sbframe(frame)
-
     (mutex_addr,) = get_function_parameter(frame, ("u"))
 
     print(mutex_addr, "is acquired by thread id", stacktrace.thread_id)
@@ -32,12 +31,13 @@ def _inspect_mutexguard(frame: SBFrame, mutexguard_addr: int) -> int:
     return struct.unpack("P", content)[0]
 
 
-@MODULE.callback_filelineno("sync/mutex.rs", 525)
+@MODULE.breakpoint_srcloc("sync/mutex.rs", 525)
 def mutexguard_drop(
     frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict
 ):
     stacktrace = stacktrace_from_sbframe(frame)
 
-    mutex_addr = _inspect_mutexguard(frame, get_function_parameter(frame, ("u"))[0])
+    mutex_addr = _inspect_mutexguard(
+        frame, get_function_parameter(frame, ("u"))[0])
 
     print(mutex_addr, "is dropped by thread id", stacktrace.thread_id)

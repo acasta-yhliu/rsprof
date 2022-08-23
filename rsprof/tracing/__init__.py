@@ -19,41 +19,53 @@ class TracingModule:
         self.breakpoints.update(debugger)
         return self
 
-    def callback_regex(self, regex: str):
+    def breakpoint_sysregex(self, regex: str):
         def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
-            self.breakpoints.register_callback_regex(regex, callback)
+            self.breakpoints.br_sysregex(regex, callback)
             return callback
 
         return aux
 
-    def callback_name(self, name: str):
+    def breakpoint_sysname(self, name: str):
         def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
-            self.breakpoints.register_callback_name(name, callback)
+            self.breakpoints.br_sysname(name, callback)
             return callback
 
         return aux
 
-    def callback_filelineno(self, file: str, line: int):
+    def breakpoint_srcloc(self, file: str, line: int):
         def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
-            self.breakpoints.register_callback_filelineno(file, line, callback)
+            self.breakpoints.br_srcloc(file, line, callback)
             return callback
 
         return aux
 
-    def callback_report(self, reporter):
+    def breakpoint_name(self, name: str):
+        def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
+            self.breakpoints.br_name(name)
+            return callback
+
+        return aux
+
+    def breakpoint_regex(self, regex: str):
+        def aux(callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
+            self.breakpoints.br_regex(regex)
+            return callback
+
+        return aux
+
+    def register_report_fn(self, reporter):
         self.reporter = reporter
 
     def enable(self, target: SBTarget):
-        succ_enabled, unresolved = self.breakpoints.set(target)
-        if not succ_enabled:
+        result = self.breakpoints.set(target)
+        if result == BreakpointManager.DUPLICATE_TARGET:
             warn(f"tracing module '{self.name}' is already enabled")
+        elif result == BreakpointManager.HAS_UNRESOLVED:
+            warn(f"tracing module '{self.name}' has unresolved breakpoints")
+            warn(f"it may not produce desired result")
         else:
-            if unresolved is not None:
-                fail(
-                    f"tracing module '{self.name}' failed to enable due to unresolved symbol '{unresolved}'"
-                )
-            else:
-                info(f"tracing module '{self.name}' is enabled")
+            info(f"tracing module '{self.name}' is enabled")
 
     def clear(self):
         self.events.clear()
@@ -69,8 +81,8 @@ class TracingModule:
             self.reporter(output_postfix)
 
     def is_enabled(self, target: SBTarget):
-        for t, _ in self.breakpoints.registered_breakpoints:
-            if target == t:
+        for reg in self.breakpoints.reg_brs:
+            if target == reg.target:
                 return True
         return False
 
@@ -96,7 +108,8 @@ def load_tracing_modules(debugger: SBDebugger, modules: List[str]):
             panic(f"tracing module '{module_name}' does not exist")
 
     return map(
-        lambda x: import_module(f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
+        lambda x: import_module(
+            f"rsprof.tracing.{x}").MODULE.on_load(debugger), modules
     )
 
 

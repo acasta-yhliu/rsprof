@@ -1,5 +1,8 @@
+from dataclasses import dataclass
 from inspect import isfunction
-from typing import Any, Callable, List, Literal, Tuple
+from re import Pattern
+import re
+from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 from lldb import (
     SBDebugger,
     SBTarget,
@@ -7,103 +10,184 @@ from lldb import (
     SBBreakpointLocation,
     SBBreakpoint,
     SBValue,
+    SBModule,
+    SBSymbol
 )
 
-from rsprof.logutil import info
+from rsprof.logutil import fail, info, warn
 
 
 def import_lldb_command(lldb_debugger: SBDebugger, item):
     if isfunction(item):
         mod_n, cmd_n = item.__module__, item.__qualname__
         info(f"import command '{mod_n}.{cmd_n}'")
-        lldb_debugger.HandleCommand(f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
+        lldb_debugger.HandleCommand(
+            f"command script add -f {mod_n}.{cmd_n} {cmd_n}")
     else:
         for path in item.__path__:
             info(f"import module '{path}'")
             lldb_debugger.HandleCommand(f"command script import {path}")
 
 
-class BreakpointManager:
-    def __init__(self) -> None:
-        self.breakpoint_callbacks: List[
-            Tuple[
-                str,
-                int,
-                Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
-            ]
-        ] = []
-        self.registered_breakpoints: List[Tuple[SBTarget, List[int]]] = []
+@dataclass
+class SrcLoc:
+    file:  str
+    line: int
 
-    def register_callback_regex(
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line}"
+
+
+def _not_none(s: Optional[str]):
+    return "" if s is None else s
+
+
+class BrType:
+    SYSNAME = 0
+    SYSREGEX = 1
+    NAME = 2
+    REGEX = 3
+    SRCLOC = 4
+
+
+@dataclass
+class BrRegistration:
+    pattern: Union[str, Pattern, SrcLoc]
+    regtype: int
+    callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]
+
+    def match(self, symbol: SBSymbol):
+        name = _not_none(symbol.GetName())
+        sysname = symbol.GetMangledName()
+        sysname = name if sysname is None else sysname
+
+        if self.regtype == 0:
+            return self.pattern == sysname
+        elif self.regtype == 1:
+            return self.pattern.match(sysname) is not None
+        elif self.regtype == 2:
+            return self.pattern == name
+        elif self.regtype == 3:
+            return self.pattern.match(name) is not None
+        return False
+
+    def __str__(self) -> str:
+        return self.pattern.__str__()
+
+
+@dataclass
+class BrRecord:
+    target: SBTarget
+    brs: List[int]
+
+
+class BreakpointManager:
+    DUPLICATE_TARGET = 0
+    HAS_UNRESOLVED = 1
+    NO_UNRESOLVED = 2
+
+    def __init__(self) -> None:
+        self.br_registra: List[BrRegistration] = []
+        self.reg_brs: List[BrRecord] = []
+
+    def br_sysregex(
         self,
         regex: str,
         callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
     ):
-        self.breakpoint_callbacks.append((regex, 1, callback))
+        self.br_registra.append(BrRegistration(
+            re.compile(regex), BrType.SYSREGEX, callback))
 
-    def register_callback_name(
+    def br_sysname(
         self,
         name: str,
         callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
     ):
-        self.breakpoint_callbacks.append((name, 0, callback))
+        self.br_registra.append(BrRegistration(name, BrType.SYSNAME, callback))
 
-    def register_callback_filelineno(
+    def br_srcloc(
         self,
         file: str,
         line: int,
         callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None],
     ):
-        self.breakpoint_callbacks.append(((file, line), 2, callback))
+        self.br_registra.append(BrRegistration(
+            SrcLoc(file, line), BrType.SRCLOC, callback))
+
+    def br_name(self, name: str, callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
+        self.br_registra.append(BrRegistration(name, BrType.NAME, callback))
+
+    def br_regex(self, regex: str, callback: Callable[[SBFrame, SBBreakpointLocation, Any, Any], None]):
+        self.br_registra.append(BrRegistration(
+            re.compile(regex), BrType.REGEX, callback))
 
     def update(self, debugger: SBDebugger):
-        self.registered_breakpoints = list(
+        self.reg_brs = list(
             filter(
-                lambda x: debugger.GetIndexOfTarget(x[0]) != 4294967295,
-                self.registered_breakpoints,
+                lambda x: debugger.GetIndexOfTarget(x.target) != 4294967295,
+                self.reg_brs,
             )
         )
 
+    def _enumerate_symbols(self, target: SBTarget):
+        for i in range(0, target.GetNumModules()):
+            module: SBModule = target.GetModuleAtIndex(i)
+            for si in range(0, module.GetNumSymbols()):
+                symbol: SBSymbol = module.GetSymbolAtIndex(si)
+                yield symbol
+
+    def _set_bp(self, bp: SBBreakpoint, pattern: BrRegistration):
+        bp.SetAutoContinue(True)
+        bp.SetScriptCallbackFunction(
+            f"{pattern.callback.__module__}.{pattern.callback.__qualname__}")
+        if bp.GetNumLocations() == 0:
+            # show a warning if there's no location for that pattern
+            warn(f"breakpoint {pattern} has 0 location")
+            return False
+        return True
+
     def set(self, target: SBTarget):
-        for t, _ in self.registered_breakpoints:
-            if t == target:
-                return False, None
+        for reg in self.reg_brs:
+            if reg.target == target:
+                return BreakpointManager.DUPLICATE_TARGET
 
-        registered_breakpoints = []
-        for (symb, stype, callback) in self.breakpoint_callbacks:
-            # create breakpoint with different dispatch method
-            bp: SBBreakpoint
-            if stype == 0:
-                bp = target.BreakpointCreateByName(symb)
-            elif stype == 1:
-                bp = target.BreakpointCreateByRegex(symb)
-            elif stype == 2:
-                bp = target.BreakpointCreateByLocation(symb[0], symb[1])
+        # newly created breakpoints
+        new_brs = []
+        unresolved = False
 
-            if len(bp.locations) != 0:
-                bp.SetScriptCallbackFunction(
-                    f"{callback.__module__}.{callback.__qualname__}"
-                )
-                bp.SetAutoContinue(True)
-                registered_breakpoints.append(bp.id)
+        # register breakpoints based on location
+        for registration in self.br_registra:
+            if registration.regtype == BrType.SRCLOC:
+                bp: SBBreakpoint = target.BreakpointCreateByLocation(
+                    registration.pattern.file, registration.pattern.line)
+                if not self._set_bp(bp, registration):
+                    unresolved = True
+                new_brs.append(bp.id)
 
-            else:
-                target.BreakpointDelete(bp.id)
+        # now handle all symbols, filter them and set breakpoints for demangled name
+        for symbol in self._enumerate_symbols(target):
+            for registration in self.br_registra:
+                if registration.regtype != BrType.SRCLOC and registration.match(symbol):
+                    bp: SBBreakpoint = target.BreakpointCreateBySBAddress(
+                        symbol.GetStartAddress())
+                    if not self._set_bp(bp, registration):
+                        unresolved = True
+                    new_brs.append(bp.id)
 
-                # delete set breakpoints
-                for bpid in registered_breakpoints:
-                    target.BreakpointDelete(bpid)
+        self.reg_brs.append(BrRecord(target, new_brs))
+        info(f"totally {len(new_brs)} breakpoints set")
 
-                return True, symb
-        self.registered_breakpoints.append((target, registered_breakpoints))
-        return True, None
+        if unresolved:
+            return BreakpointManager.HAS_UNRESOLVED
+        else:
+            return BreakpointManager.NO_UNRESOLVED
 
     def unset(self, target: SBTarget):
-        for index, (t, ids) in enumerate(self.registered_breakpoints):
-            if t == target:
-                for id in ids:
+        for index, rec in enumerate(self.reg_brs):
+            if rec.target == target:
+                for id in rec.brs:
                     target.BreakpointDelete(id)
-                self.registered_breakpoints.pop(index)
+                self.reg_brs.pop(index)
                 return True
         return False
 

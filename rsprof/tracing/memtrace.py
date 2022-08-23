@@ -38,7 +38,7 @@ class DeallocationEvent(MemtraceEvent):
         self.addr = addr
 
 
-@MODULE.callback_name("__rsprof_memtrace_event")
+@MODULE.breakpoint_sysname("__rsprof_memtrace_event")
 def rsprof_memtrace_event(
     frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict
 ):
@@ -54,7 +54,7 @@ def rsprof_memtrace_event(
     MODULE.append_event(event)
 
 
-@MODULE.callback_report
+@MODULE.register_report_fn
 def report(output_postfix: Optional[str]):
     profile_builder = ProfileBuilder(
         ("bytes", "allocation size"), ("bytes", "allocation align")

@@ -53,7 +53,7 @@ class DeallocEvent(MemoryEvent):
         self.align = align
 
 
-@MODULE.callback_name("__rust_alloc")
+@MODULE.breakpoint_sysname("__rust_alloc")
 def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
     stacktrace = stacktrace_from_sbframe(frame)
 
@@ -62,7 +62,7 @@ def rust_alloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_di
     MODULE.events.append(AllocEvent(stacktrace, size, align))
 
 
-@MODULE.callback_name("__rust_alloc_zeroed")
+@MODULE.breakpoint_sysname("__rust_alloc_zeroed")
 def rust_alloc_zeroed(
     frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict
 ):
@@ -73,7 +73,7 @@ def rust_alloc_zeroed(
     MODULE.events.append(AllocEvent(stacktrace, size, align))
 
 
-@MODULE.callback_name("__rust_realloc")
+@MODULE.breakpoint_sysname("__rust_realloc")
 def rust_realloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
     stacktrace = stacktrace_from_sbframe(frame)
 
@@ -84,7 +84,7 @@ def rust_realloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_
     MODULE.events.append(ReallocEvent(stacktrace, old_addr, old_size, align, new_size))
 
 
-@MODULE.callback_name("__rust_dealloc")
+@MODULE.breakpoint_sysname("__rust_dealloc")
 def rust_dealloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_dict):
     stacktrace = stacktrace_from_sbframe(frame)
 
@@ -93,7 +93,7 @@ def rust_dealloc(frame: SBFrame, loc: SBBreakpointLocation, extra_args, interal_
     MODULE.append_event(DeallocEvent(stacktrace, addr, size, align))
 
 
-@MODULE.callback_report
+@MODULE.register_report_fn
 def report(output_postfix: Optional[str]):
     profile_builder = ProfileBuilder(
         ("bytes", "allocation size"), ("bytes", "allocation align")
